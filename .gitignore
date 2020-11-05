@@ -1,0 +1,16 @@
+.Rproj.user
+.Rhistory
+
+/*.txt
+/*.sh
+/*.py
+/*.R
+/*.pdf
+/*counts
+/*old
+/*results
+/*library_tables
+
+all_htseq_with_genes
+
+local_data
