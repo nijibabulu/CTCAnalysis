@@ -4,7 +4,7 @@
 <!-- badges: start -->
 <!-- badges: end -->
 
-CTC analysis is a package for oru CTC RNA-sequencing analysis in the Giannakakou Lab.
+CTC analysis is a package for our CTC RNA-sequencing analysis in the Giannakakou Lab.
 
 ## Installation
 
