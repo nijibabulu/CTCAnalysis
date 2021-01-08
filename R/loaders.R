@@ -26,9 +26,9 @@ loadTarget <-
     stop(paste("The", varInt, "variable contains punctuation characters, please remove them"))
   if(!is.null(group_translation)) {
     if(keep_group_code) {
-      target <- mutate(target, group_code = target[, varInt])
+      target <- dplyr::mutate(target, group_code = target[, varInt])
     }
-    target <- mutate(target, !!varInt := translated_factor(group, group_translation))
+    target <- dplyr::mutate(target, !!varInt := translated_factor(group, group_translation))
   }
   if(verbose) {
     cat("Target file:\n")
@@ -41,7 +41,7 @@ joinCountFile <-
   function (tbl, count_file, label, by, delim="\t")
 {
     counts <- readr::read_delim(count_file, delim = delim, col_names = c(by, label), col_types = "ci")
-    dplyr::full_join(tbl, counts, by = by)
+    dplyr::left_join(tbl, counts, by = by)
 }
 
 loadSummaries <-
@@ -73,7 +73,7 @@ loadSummaries <-
       table <- joinCountFile(table, mapped_reads_file, "Mapped", "Library")
     }
     if(!purrr::is_null(duplicate_reads_file)) {
-      table <- read_delim(duplicate_reads_file, delim="\t", col_types=cols()) %>% full_join(table, ., by=c("Library"="name"))
+      table <- readr::read_delim(duplicate_reads_file, delim="\t", col_types=readr::cols()) %>% dplyr::full_join(table, ., by=c("Library"="name"))
     }
     table
   } else {

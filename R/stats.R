@@ -5,7 +5,7 @@ geneSummaries <- function(mat, meta=NULL) {
   countsLong %>%
     dplyr::group_by(Sample) %>%
     dplyr::summarize(NumberOfGenes = sum(Value > 0), NumberOfNulls = sum(Value == 0)) %>%
-    left_join(target %>% dplyr::mutate_if(is.factor, as.character), by=c(Sample="label"))
+    dplyr::left_join(target %>% dplyr::mutate_if(is.factor, as.character), by=c(Sample="label"))
 }
 
 maxGene <- function(mat, meta=NULL, norm=NULL, frequency=T) {
@@ -20,10 +20,11 @@ maxGene <- function(mat, meta=NULL, norm=NULL, frequency=T) {
     dplyr::group_by(Sample) %>%
     dplyr::arrange(Value) %>%
     {if(frequency) dplyr::mutate(.,Value=Value/sum(Value)) else {.}} %>%
-    dplyr::slice(n())
+    dplyr::slice(dplyr::n())
 }
 
-genePCA <- function(mat, meta=NULL, norm=NULL, vst=DESeq2::varianceStabilizingTransformation,
+genePCA <- function(mat, meta=NULL, norm=NULL, sample_column = "label",
+                    vst=DESeq2::varianceStabilizingTransformation,
                     n_genes = min(500, nrow(mat))) {
   if(!is.null(norm)) {
     mat <- norm(mat, meta)
@@ -40,8 +41,8 @@ genePCA <- function(mat, meta=NULL, norm=NULL, vst=DESeq2::varianceStabilizingTr
   pca_tbl <- pca$x %>%
     tibble::as_tibble() %>%
     dplyr::mutate(Sample = rownames(pca$x)) %>%
-    dplyr::left_join(countsTarget(lungCounts)  %>% dplyr::mutate_if(is.factor, as.character),
-                     by=c(Sample="label"))
+    dplyr::left_join(meta  %>% dplyr::mutate_if(is.factor, as.character),
+                     by=c(Sample = sample_column))
   list(pca=pca, prp=prp, tbl=pca_tbl)
 }
 

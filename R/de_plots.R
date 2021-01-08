@@ -18,8 +18,8 @@ enhanceDESeq2ResultTbl <- function(tbl, topn=20, fc=2, alpha=0.05, labels=NULL, 
     dplyr::arrange(dplyr::desc(rank))
 
 
-  if(is.null(labels)) {
-    labels <- bind_rows(
+  if(is.null(labels) && topn > 0) {
+    labels <- dplyr::bind_rows(
       data %>% dplyr::filter(log2FoldChange > 0 & sig == "s") %>% dplyr::slice(1:topn),
       data %>% dplyr::filter(log2FoldChange < 0 & sig == "s") %>% dplyr::slice(1:topn)
       )  %>%
@@ -27,7 +27,7 @@ enhanceDESeq2ResultTbl <- function(tbl, topn=20, fc=2, alpha=0.05, labels=NULL, 
   }
 
   if(filter_na) {
-    data <- data %>% filter(filtered == FALSE)
+    data <- data %>% dplyr::filter(filtered == FALSE)
   }
 
   data %>% dplyr::mutate(label=dplyr::if_else(Geneid %in% labels, Geneid, ""),
@@ -35,20 +35,20 @@ enhanceDESeq2ResultTbl <- function(tbl, topn=20, fc=2, alpha=0.05, labels=NULL, 
 }
 
 DESeq2VolcanoPlot <- function(tbl, samples, name="Volcano Plot", alpha=0.05, fc=2, labels=NULL, topn=20, show_filtered = FALSE, rank=NULL) {
-  data <- enhanceDESeq2ResultTbl(tbl, topn = topn, labels = labels, filter_na = !show_filtered, rank=rank)
+  data <- enhanceDESeq2ResultTbl(tbl, topn = topn, labels = labels, filter_na = !show_filtered, rank=rank, fc = fc, alpha = alpha)
 
-  aesthetic <- ggplot2::aes(x=log2FoldChange, y=-log2(padj), color=Status, label=label)
+  aesthetic <- ggplot2::aes(x=log2FoldChange, y=-log10(padj), color=Status, label=label)
   if(show_filtered) {
     aesthetic <- utils::modifyList(aesthetic, shape=filtered)
   }
 
-  nplussig <- data %>% filter(sig=="s" & log2FoldChange > 0) %>% nrow()
-  nminussig <- data %>% filter(sig=="s" & log2FoldChange < 0) %>% nrow()
+  nplussig <- data %>% dplyr::filter(sig=="s" & log2FoldChange > 0) %>% nrow()
+  nminussig <- data %>% dplyr::filter(sig=="s" & log2FoldChange < 0) %>% nrow()
 
   p <- ggplot2::ggplot(data, aesthetic) +
     ggplot2::annotate("rect", xmin = 0, ymin = 0, xmax = -Inf, ymax = Inf, fill = "grey", alpha = 0.4) +
     ggplot2::geom_point(size = 0.5) +
-    ggplot2::scale_color_manual(values=c("red", "goldenrod", "grey")) +
+    ggplot2::scale_color_manual(values=purrr::set_names(c("red", "goldenrod", "grey"), levels(data$Status))) +
     ggrepel::geom_text_repel(show.legend = F, color = "black") +
     ggplot2::labs(title = stringr::str_glue("{samples[1]} versus {samples[2]} Volcano Plot"),
                   legend = "") +
@@ -66,7 +66,7 @@ DESeq2VolcanoPlot <- function(tbl, samples, name="Volcano Plot", alpha=0.05, fc=
 }
 
 DESeq2VolcanoPlots <- function(deres, alpha=0.05, fc=2, labels=NULL, topn=20, show_filtered = FALSE, rank = NULL) {
-  purrr::map2(deres$tbl_results, str_split(names(deres$tbl_results), "_vs_"), DESeq2VolcanoPlot, alpha=alpha, fc=fc, labels=labels)
+  purrr::map2(deres$tbl_results, stringr::str_split(names(deres$tbl_results), "_vs_"), DESeq2VolcanoPlot, topn=topn, alpha=alpha, fc=fc, labels=labels)
 }
 
 DESeq2MAPlot <- function(tbl, samples, alpha=0.05, fc=2, labels=NULL, topn=20, show_filtered = FALSE, rank = NULL) {
@@ -83,19 +83,19 @@ DESeq2MAPlot <- function(tbl, samples, alpha=0.05, fc=2, labels=NULL, topn=20, s
     geom_text_repel(show.legend = F, color = "black") +
     scale_x_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
                   labels = scales::trans_format("log10", scales::math_format(10^.x))) +
-    labs(title = str_glue("{samples[1]} versus {samples[2]} MA Plot"),
-         x = str_glue("Mean of {samples[1]}")) +
+    labs(title = stringr::str_glue("{samples[1]} versus {samples[2]} MA Plot"),
+         x = stringr::str_glue("Mean of {samples[1]}")) +
     theme_bw()
 
   if(show_filtered) {
-    p <- p + scale_shape_manual(values=c(20,6))
+    p <- p + ggplot2::scale_shape_manual(values=c(20,6))
   }
 
   p
 }
 
 DESeq2MAPlots <- function(deres, alpha=0.05, fc=2, labels=NULL, topn=20, show_filtered = FALSE, rank = NULL) {
-  purrr::map2(deres$tbl_results, str_split(names(deres$tbl_results), "_vs_"), DESeq2MAPlot, alpha=alpha, fc=fc, labels=labels, rank = rank)
+  purrr::map2(deres$tbl_results, stringr::str_split(names(deres$tbl_results), "_vs_"), DESeq2MAPlot, alpha=alpha, fc=fc, labels=labels, rank = rank)
 }
 
 exprHeatmap <- function(counts, meta, target, palette = ggthemes::stata_pal(), varInt="group", genes=NULL, ann_title = "Type",
@@ -107,7 +107,7 @@ exprHeatmap <- function(counts, meta, target, palette = ggthemes::stata_pal(), v
 
   if(!is.null(result_tbl)) {
     data <-  enhanceDESeq2ResultTbl(result_tbl, topn = topn, rank = rank)
-    genes <- discard(data$label, ~stringr::str_length(.) == 0)
+    genes <- purrr::discard(data$label, ~stringr::str_length(.) == 0)
   }
 
   if(!is.null(norm)) {
@@ -121,8 +121,8 @@ exprHeatmap <- function(counts, meta, target, palette = ggthemes::stata_pal(), v
   ann_data <- target %>% dplyr::select(!!varInt)
   values <- purrr::map(ann_data, purrr::compose(unique, as.character)) %>% purrr::flatten_chr()
   colors <- palette(length(values))
-  col_map <- list(set_names(colors, values))
-  col_ann <- ComplexHeatmap::HeatmapAnnotation(df = ann_data %>% dplyr::mutate_if(is.factor, as.character),
+  col_map <- list(purrr::set_names(colors, values))
+  col_ann <- ComplexHeatmap::HeatmapAnnotation(df = ann_data %>% dplyr::mutate_if(is.factor, as.character) %>% as.data.frame(),
                                                which = "column",
                                                col = purrr::set_names(rep(col_map, length(varInt)), varInt))
 
@@ -130,7 +130,11 @@ exprHeatmap <- function(counts, meta, target, palette = ggthemes::stata_pal(), v
   lim <- max(abs(quantile(counts, 0.02, na.rm = T)), abs(quantile(counts, 0.98, na.rm = T)))
 
 
-  heat_fun <- circlize::colorRamp2(c(-lim, 0, lim), c("Darkblue", "white", "red"))
+  if(scale) {
+    heat_fun <- circlize::colorRamp2(c(-lim, 0, lim), c("Darkblue", "white", "red"))
+  } else {
+    heat_fun <- circlize::colorRamp2(c( 0, lim), c("white", "red"))
+  }
   lgd <- list( title = "Expr.")
 
 
