@@ -62,7 +62,7 @@ plot_summary_stats <- function(tbl, x="Treatment", facet="Stage~Patient",
 
 gseaPathwayPlot <- function(pathway_name, gsea_results, pathways, stats, gseaParam = 1, ticksSize = 0.2, linecolor="red",
                             label_stats=c("NES", `p-value`="pval", `q-value`="padj"), label_digits = 2,
-                            title=pathway_name) {
+                            title=pathway_name, titleSize=NULL, titleHjust=0.5) {
 
   pathway <- pathways[[pathway_name]]
   rnk <- rank(-stats)
@@ -126,7 +126,9 @@ gseaPathwayPlot <- function(pathway_name, gsea_results, pathways, stats, gseaPar
                    axis.ticks.x = ggplot2::element_blank(),
                    axis.text.x = ggplot2::element_blank(),
                    axis.title.x = ggplot2::element_blank(),
-                   plot.margin = ggplot2::margin(t = 5.5, r = 5.5, b = 0, l = 5.5)) +
+                   plot.margin = ggplot2::margin(t = 5.5, r = 5.5, b = 0, l = 5.5),
+                   plot.title = ggplot2::element_text(size = titleSize,
+                                                      hjust = titleHjust)) +
 
     ggplot2::labs( y="Enrichment Score", title = title)
 
