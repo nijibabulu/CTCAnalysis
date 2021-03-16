@@ -1,10 +1,10 @@
-summaryPlot <- function(counts, x, y, geom=ggplot2::geom_col(),
-                        meta=NULL, group="group", facet=NULL,
+summaryPlot <- function(se, x, y, geom=ggplot2::geom_col(),
+                        group="Type", facet=NULL,
                         facet_scales = "fixed", facet_space = "fixed",
                         xlab = "Sample", color="black",
                         palette=ggthemes::ptol_pal()) {
 
-  summaries <- geneSummaries(counts, meta)
+  summaries <- geneSummaries(se)
   aesthetic <- ggplot2::aes(x=!!rlang::ensym(x), y=!!rlang::ensym(y))
   if(!is.null(group))
     aesthetic <- utils::modifyList(aesthetic, ggplot2::aes(fill=!!rlang::ensym(group)))
@@ -13,6 +13,7 @@ summaryPlot <- function(counts, x, y, geom=ggplot2::geom_col(),
     geom +
     ggplot2::discrete_scale("fill", "group", palette = palette) +
     ggplot2::labs(x = xlab) +
+    ggplot2::theme_bw() +
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle=90),
                    legend.title = ggplot2::element_blank())
 
@@ -23,28 +24,28 @@ summaryPlot <- function(counts, x, y, geom=ggplot2::geom_col(),
 
 }
 
-barplotNull <- function(counts, meta, ...) {
-  summaryPlot(counts, meta = meta, "Sample", "NumberOfNulls", ...)
+barplotNull <- function(se,  ...) {
+  summaryPlot(se,  "Sample", "NumberOfNulls", ...)
 }
-barplotGeneCounts <- function(counts, meta, ...) {
-  summaryPlot(counts, meta = meta, "Sample", "NumberOfGenes", ...)
+barplotGeneCounts <- function(se,  ...) {
+  summaryPlot(se,  "Sample", "NumberOfGenes", ...)
 }
 
 boxplotNull <- function(counts, meta, geom=ggplot2::geom_boxplot(), ...) {
-  summaryPlot(counts, meta= meta, "group", "NumberOfNulls", geom = geom, xlab = "Type", ...) +
+  summaryPlot(counts, "Type", "NumberOfNulls", geom = geom, xlab = "Type", ...) +
     ggplot2::theme(legend.position = "none")
 }
 boxplotGeneCounts <- function(counts, meta, geom=ggplot2::geom_boxplot(), ...) {
-  summaryPlot(counts, meta = meta, "group", "NumberOfGenes", geom=geom, xlab = "Type",  ...) +
+  summaryPlot(counts, "Type", "NumberOfGenes", geom=geom, xlab = "Type",  ...) +
     ggplot2::theme(legend.position = "none")
 }
 
 
-plot_summary_stats <- function(tbl, x="Treatment", facet="Stage~Patient",
-                               levels=c("Unmapped", "NoFeatures", "Ambiguity", "Multimapped", "Assigned"),
+plot_summary_stats.tbl <- function(tbl, x="Type", facet="Stage~Patient",
+                               levels=c("Unmapped", "NoFeatures", "Ambiguity", "Multimapping", "Assigned"),
                                colors=ggthemes::ptol_pal()(length(levels)),
                                facet_scales = "fixed", facet_space = "fixed") {
-  p <- ggplot2::ggplot(tbl, ggplot2::aes(x=!!rlang::ensym(x), y = value, fill=factor(name, levels=levels))) +
+  p <- ggplot2::ggplot(tbl, ggplot2::aes(x=x, y = value, fill=factor(name, levels=levels))) +
     ggplot2::geom_col() +
     ggplot2::scale_fill_manual(values=colors) +
     ggplot2::theme_bw() +
@@ -54,6 +55,31 @@ plot_summary_stats <- function(tbl, x="Treatment", facet="Stage~Patient",
           axis.title.y = ggplot2::element_blank(),
           legend.position = "bottom",
           legend.title = ggplot2::element_blank())
+  if(!rlang::is_null(facet)) {
+    p <- p + ggplot2::facet_grid(stringr::str_glue("{facet}"),  scales = facet_scales, space=facet_space)
+  }
+  p
+}
+
+plot_summary_stats <- function(se, x="Type", facet="Stage~Patient",
+                               levels=c("Unmapped", "NoFeatures", "Ambiguity", "MultiMapping", "Assigned"),
+                               colors=ggthemes::ptol_pal()(length(levels)),
+                               facet_scales = "fixed", facet_space = "fixed") {
+  tbl <- SummarizedExperiment::colData(se) %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column("SampleID") %>%
+    dplyr::rename_with( ~stringr::str_remove(.x, "Unassigned_"), starts_with("Unassigned_")) %>%
+    tidyr::pivot_longer(levels)
+  p <- ggplot2::ggplot(tbl, ggplot2::aes(x=!!rlang::ensym(x), y = value, fill=factor(name, levels=levels))) +
+    ggplot2::geom_col() +
+    ggplot2::scale_fill_manual(values=colors) +
+    ggplot2::theme_bw() +
+    ggplot2::guides(fill = ggplot2::guide_legend(nrow = 1)) +
+    ggplot2::theme(axis.title.x = ggplot2::element_blank(),
+                   axis.text.x = ggplot2::element_text(angle = 90, hjust = 1),
+                   axis.title.y = ggplot2::element_blank(),
+                   legend.position = "bottom",
+                   legend.title = ggplot2::element_blank())
   if(!rlang::is_null(facet)) {
     p <- p + ggplot2::facet_grid(stringr::str_glue("{facet}"),  scales = facet_scales, space=facet_space)
   }
@@ -200,10 +226,10 @@ gseaDotPlot <- function(gsea_results, threshold=0.2, ethresh=1) {
 
 
 
-maxGenePlot <- function(counts, meta=NULL, norm=NULL, group="group",
+maxGenePlot <- function(se, meta=NULL, norm=NULL, group="Type",
                         facet=NULL, facet_scales="fixed", facet_space="fixed",
                         palette=ggthemes::ptol_pal()) {
-  maxGeneTbl <- maxGene(counts, meta, norm)
+  maxGeneTbl <- maxGene(se, norm)
   aesthetic <- ggplot2::aes(x=Sample, y = Value, label=Geneid)
   if(!is.null(group))
     aesthetic <- utils::modifyList(aesthetic, ggplot2::aes(fill=!!rlang::ensym(group)))
@@ -212,14 +238,15 @@ maxGenePlot <- function(counts, meta=NULL, norm=NULL, group="group",
     ggplot2::discrete_scale("fill", "group", palette = palette) +
     ggplot2::geom_text(angle=90) +
     ggplot2::labs(x = "Sample", y = "Frequency", fill = "Type") +
+    ggplot2::theme_bw() +
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle=90))
 
   p
 }
 
-genePCAPlot <- function(counts, meta=NULL, norm=NULL, sample_column = "label", group="group", palette=ggthemes::ptol_pal(),
-                        pcs=3, nrow=1, n_genes = 500, label_points = F, fix_coords = F, label_col = "Sample", ...) {
-  pca <- genePCA(counts, meta, sample_column=sample_column, ...)
+genePCAPlot <- function(se, norm=NULL, sample_column = "Sample", group="Type", palette=ggthemes::ptol_pal(),
+                        pcs=2, nrow=1, n_genes = 500, label_points = T, fix_coords = T, label_col = "Patient", max.overlaps = 50,  ...) {
+  pca <- genePCA(se, sample_column=sample_column,...)
   aesthetic <- ggplot2::aes(x=Sample, y = Value, label=Geneid)
   if(is.numeric(pcs)) {
     pc_names <- stringr::str_glue("PC{seq(pcs)}")
@@ -239,7 +266,7 @@ genePCAPlot <- function(counts, meta=NULL, norm=NULL, sample_column = "label", g
                       color="Type")
 
       if(label_points) {
-        p <- p + ggrepel::geom_text_repel(show.legend = F)
+        p <- p + ggrepel::geom_text_repel(show.legend = F, max.overlaps = max.overlaps)
       }
       pc_vals <- pca$tbl %>% dplyr::select(!!!pc1, !!!pc2) %>% purrr::flatten_dbl()
       limits <- c(min(pc_vals), max(pc_vals))

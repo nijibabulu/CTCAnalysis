@@ -1,14 +1,34 @@
-
-run_DESeq2 <- function (counts, target, varInt = "group", batch = NULL, locfunc = "median",
-          fitType = "parametric", pAdjustMethod = "BH", cooksCutoff = TRUE, lfcShrinkMethod = "apeglm",
+run_DESeq2_results <- function(testCond, refCond, dds, varInt = "Type", pAdjustMethod = "BH", cooksCutoff = TRUE,
+                               lfcShrinkMethod = "apeglm", independentFiltering = TRUE, alpha = 0.05) {
+  res <- DESeq2::results(
+    dds, contrast = c(varInt, testCond, refCond), pAdjustMethod = pAdjustMethod,
+    cooksCutoff = cooksCutoff, independentFiltering = independentFiltering, alpha = alpha)
+  if(is.null(lfcShrinkMethod)) {
+    res
+  } else {
+    res_shrink <- DESeq2::lfcShrink(dds, coef = stringr::str_glue("{varInt}_{testCond}_vs_{refCond}"), type = lfcShrinkMethod)
+    if(!all(rownames(res_shrink) == rownames(res))) {
+      stop("shrunk DESeqRresults are not compatible. Cannot add stats in")
+    }
+    res_shrink$stat <- res$stat
+    res_shrink
+  }
+}
+run_DESeq2 <- function (se, varInt = "Type", batch = NULL, locfunc = "median",
+          fitType = "parametric", pAdjustMethod = "BH", cooksCutoff = TRUE,
+          lfcShrinkMethod = "apeglm", lrt = T,
           independentFiltering = TRUE, alpha = 0.05, verbose=F, ...)
 {
-  dds <- DESeq2::DESeqDataSetFromMatrix(countData = counts, colData = target,
-                                        design = formula(paste("~", ifelse(!is.null(batch),
-                                                                   paste(batch, "+"), ""), varInt)))
+  # suppress the DESeq2 warning about converting to a factor
+  SummarizedExperiment::colData(se)[,varInt] <- factor(SummarizedExperiment::colData(se)[,varInt])
+
+  # costruct a formula
+  design_formula <- stringr::str_c("~ ", stringr::str_c(batch, varInt, sep = " + "))
+  reduced_formula <- stringr::str_c("~ ", ifelse(is.null(batch), 1, batch))
+  dds <- DESeq2::DESeqDataSet(se, design = formula(design_formula))
   if(verbose)  {
     cat("Design of the statistical model:\n")
-    cat(paste(as.character(design(dds)), collapse = " "), "\n")
+    cat(paste(as.character(DESeq2::design(dds)), collapse = " "), "\n")
   }
   dds <- DESeq2::estimateSizeFactors(dds, locfunc = eval(as.name(locfunc)))
 
@@ -26,18 +46,22 @@ run_DESeq2 <- function (counts, target, varInt = "group", batch = NULL, locfunc 
       SummarizedExperiment::colData(dds)[[varInt]] <-
         stats::relevel(SummarizedExperiment::colData(dds)[[varInt]], ref=refCond)
       dds <- DESeq2::nbinomWaldTest(dds, ...)
+      if(lrt)
+        dds_lrt <- DESeq2::nbinomLRT(dds, reduced = formula(reduced_formula), ...)
 
       comparisons <- tail(conditions, -purrr::detect_index(conditions, `==`, refCond))
 
-      results <- comparisons %>% purrr::map(function(testCond) {
-         res <- DESeq2::results(
-          dds, contrast = c(varInt, testCond, refCond), pAdjustMethod = pAdjustMethod,
-          cooksCutoff = cooksCutoff, independentFiltering = independentFiltering, alpha = alpha)
-          if(!is.null(lfcShrinkMethod)) {
-            res <- DESeq2::lfcShrink(dds, coef = stringr::str_glue("{varInt}_{testCond}_vs_{refCond}"), type = lfcShrinkMethod)
-          }
-         res
-        }) %>% purrr::set_names(stringr::str_glue("{refCond}_vs_{comparisons}"))
+      run_DESeq2_results_closure <- purrr::partial(run_DESeq2_results, refCond = refCond, varInt = varInt,
+                                                   pAdjustMethod = pAdjustMethod, cooksCutoff = cooksCutoff,
+                                                   lfcShrinkMethod = lfcShrinkMethod,  independentFiltering = independentFiltering,
+                                                   alpha = alpha)
+      res <- comparisons %>% purrr::map(run_DESeq2_results_closure, dds = dds) %>% purrr::set_names(stringr::str_glue("{refCond}_vs_{comparisons}"))
+      if(lrt) {
+        res_lrt <-
+          comparisons %>% purrr::map(run_DESeq2_results_closure, dds = dds_lrt) %>% purrr::set_names(stringr::str_glue("{refCond}_vs_{comparisons}_lrt"))
+        res <- c( res, res_lrt )
+      }
+      res
     }) %>% purrr::flatten()
   tbl_results <- purrr::map(results, tibble::as_tibble, rownames = "Geneid")
 

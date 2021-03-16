@@ -19,3 +19,7 @@ computeCov <- function(mat, meta) {
   lengths_m <- meta %>% dplyr::select(Length) %>% purrr::flatten_dbl()
   mat/lengths_m
 }
+
+computeUncenteredScale <- function(mat, ...) {
+  t(scale(t(mat), center = F))
+}

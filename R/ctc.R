@@ -3,7 +3,7 @@ translated_factor <- function(vec, dict) factor(vec, levels=names(dict), labels=
 # add the sample variables (patient, celltype, stage) into the data
 expand_sample_names <- function(tbl, col_name="Sample", stage_names=NULL, treatment_names=NULL, patient_type_names=NULL) {
   tbl %>%
-    tidyr::separate(!!col_name, c("Treatment", "Stage", "Patient"), "_", remove=F) %>%
+    tidyr::separate(!!col_name, c("Study", "Type", "Stage", "Patient"), "_", remove=F) %>%
     tidyr::separate(Patient, c("PatientType", "PatientId"), "-", remove=F) %>%
     {if(!purrr::is_null(stage_names))
       dplyr::mutate(., Stage=translated_factor(.$Stage, stage_names)) else .} %>%
@@ -11,6 +11,28 @@ expand_sample_names <- function(tbl, col_name="Sample", stage_names=NULL, treatm
       dplyr::mutate(., Treatment=translated_factor(.$Treatment, treatment_names)) else .} %>%
     {if(!purrr::is_null(patient_type_names))
       dplyr::mutate(., PatientType=translated_factor(.$PatientType, patient_type_names)) else .}
+}
+
+# add the column data to the summarized experiment structure
+expand_sample_names_to_col_data <- function(se, ...)   {
+  SummarizedExperiment::colData(se) <-
+    SummarizedExperiment::colData(se) %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column("Sample") %>%
+    expand_sample_names(...) %>%
+    tibble::column_to_rownames("Sample") %>%
+    as("DataFrame")
+  se
+}
+
+add_col_data <- function(se, tbl, join_col="Patient", all.y=F, all.x = T, ...) {
+  coldf <- SummarizedExperiment::colData(se)
+  coldf$old.row.names <- rownames(coldf)
+  merged <- dplyr::left_join(as.data.frame(coldf), tbl, by=join_col)
+  rownames(merged) <- merged$old.row.names
+  merged$old.row.names <- NULL
+  SummarizedExperiment::colData(se) <- as(merged, "DataFrame")
+  se
 }
 
 drop_samples <- function(counts, target, sample_names, sample_var="label") {

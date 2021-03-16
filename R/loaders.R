@@ -1,3 +1,78 @@
+# TODO: move parsing summaries to a separate function
+loadFeatureCountData <- function(countFile, pdata=NULL, pdataNameColumn="Sample", parseSummary=F, keep_positions=F, summaryFile=paste0(countFile, ".summary")) {
+  counts <- readr::read_tsv(countFile,
+                            comment =  "#",
+                            col_types = readr::cols(
+                              .default = readr::col_double(),
+                              Geneid = readr::col_character(),
+                              Chr = readr::col_character(),
+                              Start = readr::col_character(),
+                              End = readr::col_character(),
+                              Strand = readr::col_character()
+                            ))
+
+  geneInfo <- counts[,1:6]
+  chroms <- stringr::str_split(geneInfo$Chr, ";") %>% purrr::map_chr(~names(sort(table(.x), decreasing = T))[1])
+  starts <- stringr::str_split(geneInfo$Start, ";") %>% purrr::map_int(purrr::compose(min, as.integer))
+  ends <- stringr::str_split(geneInfo$End, ";") %>% purrr::map_int(purrr::compose(max, as.integer))
+  strands <- stringr::str_split(geneInfo$Strand, ";") %>% purrr::map_chr(~names(sort(table(.x), decreasing = T))[1])
+  geneRanges <- GenomicRanges::GRanges(seqnames = chroms,
+                                       ranges = IRanges::IRanges(start= starts, end = ends),
+                                       strand = strands,
+                                       Geneid = geneInfo$Geneid,
+                                       Length = geneInfo$Length)
+
+  count_mat <- counts[,-c(2:6)] %>%
+    dplyr::mutate(Geneid=make.names(Geneid, unique=T)) %>%
+    tibble::column_to_rownames("Geneid") %>%
+    as.matrix()
+  if(!is.null(pdata)) {
+    pdata <- pdata %>% dplyr::rename(name=pdataNameColumn)
+  }
+  if(parseSummary) {
+    summary <- readr::read_tsv(summaryFile,
+                               col_types = readr::cols( .default = readr::col_double(), Status = readr::col_character())) %>%
+      tidyr::pivot_longer(-Status) %>% tidyr::pivot_wider(name, Status)
+    if(is.null(pdata)) {
+      pdata <- summary
+    } else {
+      common_colnames <- intersect(colnames(summary), colnames(pdata))
+      if(length(common_colnames)) {
+        stop(stringr::str_glue("pdata has columns in common with summary {stringr::str_c(common_colnames, collapse=', ')}"))
+      }
+      pdata <- dplyr::full_join(summary, pdata, by="name")
+    }
+  }
+
+  if(is.null(pdata)){
+    pdata <- S4Vectors::DataFrame(x = seq(ncol(count_mat)), row.names = colnames(count_mat))
+  } else {
+    pdata <- pdata %>% tibble::column_to_rownames("name")
+  }
+
+  SummarizedExperiment::SummarizedExperiment(assays=S4Vectors::SimpleList(counts=count_mat),
+                                             #rowData=geneInfo,
+                                             rowRanges=geneRanges,
+                                             colData=pdata)
+}
+
+loadLibrarySizes <- function(se, libsz_file, compute_unmapped=F,
+                             unmapped_col = "Unassigned_Unmapped",
+                             mapped_cols = c("Assigned", "Unassigned_Read_Type", "Unassigned_Singleton", "Unassigned_MappingQuality",
+                                             "Unassigned_Chimera", "Unassigned_FragmentLength", "Unassigned_Duplicate", "Unassigned_MultiMapping",
+                                             "Unassigned_Secondary", "Unassigned_NonSplit",          "Unassigned_NoFeatures",        "Unassigned_Overlapping_Length",
+                                             "Unassigned_Ambiguity" )) {
+  libsz_tbl <- readr::read_tsv(libsz_file, col_names = c("name", "LibrarySize"), col_types = "ci")
+  coldata_tbl <- SummarizedExperiment::colData(se) %>% as.data.frame() %>% tibble::rownames_to_column("name") %>% dplyr::left_join(libsz_tbl, by="name")
+  if(compute_unmapped) {
+    coldata_tbl <- dplyr::rowwise(coldata_tbl) %>%
+      dplyr::mutate(!!unmapped_col :=  LibrarySize - sum(!!as.name(mapped_cols)))
+  }
+  SummarizedExperiment::colData(se) <-  coldata_tbl %>% tibble::column_to_rownames("name") %>% as("DataFrame")
+  se
+}
+
+
 loadTarget <-
   function (targetFile, varInt, condRef, batch=NULL, verbose=F, group_translation=NULL, keep_group_code=T)
 {
@@ -203,6 +278,7 @@ matrixToLong <-
     long
   }
 }
+
 
 ensureLongAttribute <- function(mat, meta=NULL, force_update=F, id="Geneid") {
     attr <- attributes(mat)

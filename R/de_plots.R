@@ -34,7 +34,7 @@ enhanceDESeq2ResultTbl <- function(tbl, topn=20, fc=2, alpha=0.05, labels=NULL, 
                          Status=translated_factor(sig, c(s="p < 0.05, fc > 2", e="fc > 2", n="NS")))
 }
 
-DESeq2VolcanoPlot <- function(tbl, samples, name="Volcano Plot", alpha=0.05, fc=2, labels=NULL, topn=20, show_filtered = FALSE, rank=NULL) {
+DESeq2VolcanoPlot <- function(tbl, samples, name="Volcano Plot", alpha=0.05, fc=2, labels=NULL, topn=20, show_filtered = FALSE, rank=NULL, max.overlaps=100) {
   data <- enhanceDESeq2ResultTbl(tbl, topn = topn, labels = labels, filter_na = !show_filtered, rank=rank, fc = fc, alpha = alpha)
 
   aesthetic <- ggplot2::aes(x=log2FoldChange, y=-log10(padj), color=Status, label=label)
@@ -49,7 +49,7 @@ DESeq2VolcanoPlot <- function(tbl, samples, name="Volcano Plot", alpha=0.05, fc=
     ggplot2::annotate("rect", xmin = 0, ymin = 0, xmax = -Inf, ymax = Inf, fill = "grey", alpha = 0.4) +
     ggplot2::geom_point(size = 0.5) +
     ggplot2::scale_color_manual(values=purrr::set_names(c("red", "goldenrod", "grey"), levels(data$Status))) +
-    ggrepel::geom_text_repel(show.legend = F, color = "black") +
+    ggrepel::geom_text_repel(show.legend = F, color = "black", max.overlaps = max.overlaps) +
     ggplot2::labs(title = stringr::str_glue("{samples[1]} versus {samples[2]} Volcano Plot"),
                   legend = "") +
     ggplot2::annotate("text", x = 1, y = Inf, vjust = "inward", hjust = 0, label = samples[2]) +
@@ -98,27 +98,40 @@ DESeq2MAPlots <- function(deres, alpha=0.05, fc=2, labels=NULL, topn=20, show_fi
   purrr::map2(deres$tbl_results, stringr::str_split(names(deres$tbl_results), "_vs_"), DESeq2MAPlot, alpha=alpha, fc=fc, labels=labels, rank = rank)
 }
 
-exprHeatmap <- function(counts, meta, target, palette = ggthemes::stata_pal(), varInt="group", genes=NULL, ann_title = "Type",
-                        result_tbl=NULL, topn = 20, rank = NULL, norm = computeTPM,
-                        scale=T, ...) {
-  if(!xor(is.null(genes), is.null(result_tbl))) {
-    stop("exprHeatmap requires either a list of genes or a results tbl")
+exprHeatmap <- function(se, genes = NULL, palette = ggthemes::stata_pal(), varInt="Type", ann_title = "Type",
+                        result_tbl=NULL, topn = 20, rank = NULL, norm = computeTPM, transform = log1p,
+                        scale=T, center=T, unplottable_action = c("remove", "zero"), ...) {
+  unplottable_action = match.arg(unplottable_action)
+  if(is.null(genes) & is.null(result_tbl)) {
+    stop("Need either a subset of genes from the expression set or a results tbl")
   }
 
+  #transform the matrix
+  counts <- SummarizedExperiment::assay(se)
+  if(!is.null(norm))
+    counts <- norm(counts, rowTbl(se))
+  if(!is.null(transform))
+    counts <- transform(counts)
+
+  if(scale) {
+    counts <- t(scale(t(counts), center = center))
+  }
+
+  # subset the data
   if(!is.null(result_tbl)) {
     data <-  enhanceDESeq2ResultTbl(result_tbl, topn = topn, rank = rank)
     genes <- purrr::discard(data$label, ~stringr::str_length(.) == 0)
   }
+  counts <- counts[genes, ]
 
-  if(!is.null(norm)) {
-    counts <- log2(norm(counts, meta)+1)
-  }
+  # handle values we cannot plot
+  bad_rows <- apply(counts, 1, function(x) any(is.na(x)) | any(is.nan(x)) | any(is.infinite(x)))
+  if(sum(bad_rows))
+    warning(stringr::str_c(rownames(counts)[bad_rows], collapse = ", "), " contain unplottable values")
+  if(unplottable_action == "remove") { counts <- counts[!bad_rows, ] }
+  else if(unplottable_action == "zero") { counts[bad_rows, ]  <- 0 }
 
-  if(scale) {
-    counts <- t(scale(t(counts)))
-  }
-
-  ann_data <- target %>% dplyr::select(!!varInt)
+  ann_data <- colTbl(se) %>% dplyr::select(dplyr::all_of(varInt))
   values <- purrr::map(ann_data, purrr::compose(unique, as.character)) %>% purrr::flatten_chr()
   colors <- palette(length(values))
   col_map <- list(purrr::set_names(colors, values))
@@ -133,12 +146,13 @@ exprHeatmap <- function(counts, meta, target, palette = ggthemes::stata_pal(), v
   if(scale) {
     heat_fun <- circlize::colorRamp2(c(-lim, 0, lim), c("Darkblue", "white", "red"))
   } else {
-    heat_fun <- circlize::colorRamp2(c( 0, lim), c("white", "red"))
+    cols <- c("white", "#FFFFB2", "#FECC5C", "#FD8D3C", "#E31A1C", "purple", "black")
+    heat_fun <- circlize::colorRamp2(c(0,.Machine$double.xmin, lim/rev(seq_along(cols[-c(1,2)]))), cols)
   }
   lgd <- list( title = "Expr.")
 
 
   grid::grid.grabExpr(ComplexHeatmap::draw(
-    ComplexHeatmap::Heatmap(counts[genes, ], col = heat_fun, top_annotation = col_ann,  heatmap_legend_param = lgd, ...)
+    ComplexHeatmap::Heatmap(counts, col = heat_fun, top_annotation = col_ann,  heatmap_legend_param = lgd, ...)
   ))
 }
