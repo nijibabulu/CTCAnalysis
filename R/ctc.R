@@ -25,15 +25,7 @@ expand_sample_names_to_col_data <- function(se, ...)   {
   se
 }
 
-add_col_data <- function(se, tbl, join_col="Patient", all.y=F, all.x = T, ...) {
-  coldf <- SummarizedExperiment::colData(se)
-  coldf$old.row.names <- rownames(coldf)
-  merged <- dplyr::left_join(as.data.frame(coldf), tbl, by=join_col)
-  rownames(merged) <- merged$old.row.names
-  merged$old.row.names <- NULL
-  SummarizedExperiment::colData(se) <- as(merged, "DataFrame")
-  se
-}
+
 
 drop_samples <- function(counts, target, sample_names, sample_var="label") {
   is_factor <- target %>% select(!!sample_var) %>% summarize_all(class) == "factor"

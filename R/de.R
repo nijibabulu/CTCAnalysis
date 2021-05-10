@@ -14,17 +14,14 @@ run_DESeq2_results <- function(testCond, refCond, dds, varInt = "Type", pAdjustM
     res_shrink
   }
 }
-run_DESeq2 <- function (se, varInt = "Type", batch = NULL, locfunc = "median",
-          fitType = "parametric", pAdjustMethod = "BH", cooksCutoff = TRUE,
-          lfcShrinkMethod = "apeglm", lrt = T,
-          independentFiltering = TRUE, alpha = 0.05, verbose=F, ...)
-{
+
+prep_DESeq2 <- function(se, varInt = "Type", batch = NULL, verbose = F, locfunc = "median",
+                        fitType = "parametric") {
   # suppress the DESeq2 warning about converting to a factor
   SummarizedExperiment::colData(se)[,varInt] <- factor(SummarizedExperiment::colData(se)[,varInt])
 
   # costruct a formula
   design_formula <- stringr::str_c("~ ", stringr::str_c(batch, varInt, sep = " + "))
-  reduced_formula <- stringr::str_c("~ ", ifelse(is.null(batch), 1, batch))
   dds <- DESeq2::DESeqDataSet(se, design = formula(design_formula))
   if(verbose)  {
     cat("Design of the statistical model:\n")
@@ -38,34 +35,71 @@ run_DESeq2 <- function (se, varInt = "Type", batch = NULL, locfunc = "median",
   }
 
   dds <- DESeq2::estimateDispersions(dds, fitType = fitType)
+}
+
+run_DESeq2 <- function (se, varInt = "Type", batch = NULL, locfunc = "median",
+          fitType = "parametric", pAdjustMethod = "BH", cooksCutoff = TRUE,
+          lfcShrinkMethod = "apeglm",  independentFiltering = TRUE, lrt=F,
+          alpha = 0.05, verbose=F, ...)
+{
+  dds <- prep_DESeq2(se, varInt = varInt, batch = batch, locfunc = locfunc,
+                     fitType = fitType, verbose = verbose)
+
   conditions <- levels(SummarizedExperiment::colData(dds)[, varInt])
+
 
   # Perform the test with different base conditions in order to allow
   # for shrinkage estimates for all pairs.
   results <- conditions %>% head(-1) %>% purrr::map(function(refCond) {
-      SummarizedExperiment::colData(dds)[[varInt]] <-
-        stats::relevel(SummarizedExperiment::colData(dds)[[varInt]], ref=refCond)
+    # set the ref condition in the dds structure, ensuring l2fc refers to the
+    # comparison of the ref condition to the current comparison
+    # this is only necessary for retrieving lfcShrink results
+    SummarizedExperiment::colData(dds)[[varInt]] <-
+      stats::relevel(SummarizedExperiment::colData(dds)[[varInt]], ref=refCond)
+
+    if(lrt) {
+      reduced_formula <- stringr::str_c("~ ", ifelse(is.null(batch), 1, batch))
+      dds <- DESeq2::nbinomLRT(dds, reduced = formula(reduced_formula), ...)
+    } else {
       dds <- DESeq2::nbinomWaldTest(dds, ...)
-      if(lrt)
-        dds_lrt <- DESeq2::nbinomLRT(dds, reduced = formula(reduced_formula), ...)
+    }
 
-      comparisons <- tail(conditions, -purrr::detect_index(conditions, `==`, refCond))
-
-      run_DESeq2_results_closure <- purrr::partial(run_DESeq2_results, refCond = refCond, varInt = varInt,
-                                                   pAdjustMethod = pAdjustMethod, cooksCutoff = cooksCutoff,
-                                                   lfcShrinkMethod = lfcShrinkMethod,  independentFiltering = independentFiltering,
-                                                   alpha = alpha)
-      res <- comparisons %>% purrr::map(run_DESeq2_results_closure, dds = dds) %>% purrr::set_names(stringr::str_glue("{refCond}_vs_{comparisons}"))
-      if(lrt) {
-        res_lrt <-
-          comparisons %>% purrr::map(run_DESeq2_results_closure, dds = dds_lrt) %>% purrr::set_names(stringr::str_glue("{refCond}_vs_{comparisons}_lrt"))
-        res <- c( res, res_lrt )
-      }
-      res
-    }) %>% purrr::flatten()
+    # compare to all the conditions after it in the conditions
+    comparisons <- tail(conditions, -purrr::detect_index(conditions, `==`, refCond))
+    comparisons %>% purrr::map(run_DESeq2_results, dds = dds, refCond = refCond, varInt = varInt,
+                               pAdjustMethod = pAdjustMethod, cooksCutoff = cooksCutoff,
+                               lfcShrinkMethod = lfcShrinkMethod,  independentFiltering = independentFiltering,
+                               alpha = alpha) %>%
+        purrr::set_names(stringr::str_glue("{refCond}_vs_{comparisons}"))
+  }) %>% purrr::flatten()
   tbl_results <- purrr::map(results, tibble::as_tibble, rownames = "Geneid")
 
-  return(list(dds = dds, results = results, tbl_results = tbl_results, sf = DESeq2::sizeFactors(dds)))
+  norm_counts <- DESeq2::counts(dds, normalized = T)
+  mean_exprs <- purrr::map_dfc(rlang::set_names(unique(dds[[varInt]])),
+                               ~rowMeans(norm_counts[,dds[[varInt]] == .x])) %>%
+    dplyr::mutate(Geneid = rownames(norm_counts))
+
+  renamed_tbls <-
+    if(lrt) {
+      tbl_results %>% purrr::map(dplyr::select, Geneid, log2FoldChange)
+    } else {
+      tbl_results %>% purrr::map(dplyr::select, Geneid, log2FoldChange, padj) %>%
+        purrr::imap(~dplyr::rename_with(.x, function(...) stringr::str_glue("{.y}_padj"), .cols = padj))
+    }
+  combined_tbl <-
+    renamed_tbls %>%
+    purrr::imap(~dplyr::rename_with(.x, function(...) stringr::str_glue("{.y}_l2fc"), .cols = log2FoldChange)) %>%
+    purrr::reduce(dplyr::full_join, by="Geneid") %>%
+    dplyr::rowwise() %>% dplyr::mutate(max_fc = max(abs(dplyr::c_across(ends_with("l2fc")))),
+                                       min_fc = min(abs(dplyr::c_across(ends_with("l2fc"))))) %>%
+    dplyr::left_join(x = mean_exprs, by="Geneid") %>%
+    dplyr::left_join(x = dplyr::select(tbl_results[[1]], Geneid, baseMean), by="Geneid")
+
+  if(lrt) {
+    combined_tbl <- combined_tbl %>% dplyr::left_join(dplyr::select(tbl_results[[1]], Geneid, padj), by = "Geneid")
+  }
+
+  return(list(dds = dds, results = results, tbl_results = tbl_results, combined_results = combined_tbl, sf = DESeq2::sizeFactors(dds)))
 }
 
 #' Compute differential expression between two conditions using the wilcoxon rank sum test

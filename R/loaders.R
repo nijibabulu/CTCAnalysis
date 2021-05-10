@@ -1,15 +1,6 @@
 # TODO: move parsing summaries to a separate function
 loadFeatureCountData <- function(countFile, pdata=NULL, pdataNameColumn="Sample", parseSummary=F, keep_positions=F, summaryFile=paste0(countFile, ".summary")) {
-  counts <- readr::read_tsv(countFile,
-                            comment =  "#",
-                            col_types = readr::cols(
-                              .default = readr::col_double(),
-                              Geneid = readr::col_character(),
-                              Chr = readr::col_character(),
-                              Start = readr::col_character(),
-                              End = readr::col_character(),
-                              Strand = readr::col_character()
-                            ))
+  counts <- read_featureCounts(countFile)
 
   geneInfo <- counts[,1:6]
   chroms <- stringr::str_split(geneInfo$Chr, ";") %>% purrr::map_chr(~names(sort(table(.x), decreasing = T))[1])
@@ -30,9 +21,8 @@ loadFeatureCountData <- function(countFile, pdata=NULL, pdataNameColumn="Sample"
     pdata <- pdata %>% dplyr::rename(name=pdataNameColumn)
   }
   if(parseSummary) {
-    summary <- readr::read_tsv(summaryFile,
-                               col_types = readr::cols( .default = readr::col_double(), Status = readr::col_character())) %>%
-      tidyr::pivot_longer(-Status) %>% tidyr::pivot_wider(name, Status)
+    summary <- read_featureCountsSummary(summaryFile)
+
     if(is.null(pdata)) {
       pdata <- summary
     } else {
