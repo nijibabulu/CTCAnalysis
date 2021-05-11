@@ -210,16 +210,25 @@ gseaVolcanoPlot <- function(gsea_results, threshold=0.2, ethresh=1, bell=F) {
     theme(legend.position="none")
 }
 
-gseaDotPlot <- function(gsea_results, threshold=0.2, ethresh=1) {
+gseaDotPlot <- function(gsea_results, threshold=0.2, ethresh=1, limits = NULL) {
   enhanced_results <- enhancedGseaResultsTbl(gsea_results, threshold, ethresh)
-  enhanced_results %>%
+  ranked_results <-
+    enhanced_results %>%
     dplyr::filter(sig == "s") %>%
     dplyr::mutate(gseaResultRank = sign(NES)*-1*log10(padj)) %>%
-    dplyr::mutate(pathway = forcats::fct_reorder(.$pathway, .$gseaResultRank)) %>%
-    ggplot2::ggplot(ggplot2::aes(x=1, y=pathway, size=-log10(padj), color=NES)) +
+    dplyr::mutate(pathway = forcats::fct_reorder(.$pathway, .$gseaResultRank))
+  if(is.null(limits))
+    limits <- range(ranked_results$NES)
+
+  cr <- c(min(limits[1], 0), max(limits[2], 0))
+  colors <- c("white")
+  if(cr[1] < 0) colors <- c("red", "orange", colors)
+  if(cr[2] > 0) colors <- c(colors, "purple", "black")
+
+  ggplot2::ggplot(ranked_results, ggplot2::aes(x=1, y=pathway, size=-log10(padj), color=NES)) +
     ggplot2::geom_point() +
     ggplot2::scale_x_discrete(expand = ggplot2::expansion(add=-.5)) +
-    ggplot2::scale_color_gradientn(colors=c("red", "orange", "white", "purple", "black")) +
+    ggplot2::scale_color_gradientn(colors=colors, limits = cr) +
     ggplot2::theme_bw() +
     ggplot2::theme(axis.title = ggplot2::element_blank())
 }
