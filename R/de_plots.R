@@ -72,8 +72,8 @@ DESeq2VolcanoPlot <- function(tbl, samples, name="Volcano Plot", alpha=0.05, fc=
   p
 }
 
-DESeq2VolcanoPlots <- function(deres, alpha=0.05, fc=2, labels=NULL, topn=20, show_filtered = FALSE, rank = NULL, text_size = 4, repel_pull = .1, repel_push = 10, segment_size=.5) {
-  purrr::map2(deres$tbl_results, stringr::str_split(names(deres$tbl_results), "_vs_"), DESeq2VolcanoPlot, topn=topn, alpha=alpha, fc=fc, labels=labels, text_size = text_size, segment_size = segment_size)
+DESeq2VolcanoPlots <- function(deres, alpha=0.05, fc=2, labels=NULL, topn=20, show_filtered = FALSE, rank = NULL, text_size = 4, repel_pull = .1, repel_push = 10, segment_size=.5, max.overlaps = 100) {
+  purrr::map2(deres$tbl_results, stringr::str_split(names(deres$tbl_results), "_vs_"), DESeq2VolcanoPlot, topn=topn, alpha=alpha, fc=fc, labels=labels, text_size = text_size, segment_size = segment_size, max.overlaps = 100)
 }
 
 DESeq2MAPlot <- function(tbl, samples, alpha=0.05, fc=2, labels=NULL, topn=20, show_filtered = FALSE, rank = NULL) {
