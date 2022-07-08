@@ -1,3 +1,12 @@
+gseaAnalysis <- function(deres, pathways, nperm = 1e5) {
+  purrr::map(deres$tbl_results, ~{
+    dplyr::select(.x, Geneid, stat) %>%
+      dplyr::filter(!is.na(stat)) %>%
+      tibble::deframe() %>%
+      fgsea::fgseaSimple(pathways = pathways, stats = ., nperm = nperm) %>%
+      dplyr::mutate(leadingEdge = purrr::map(leadingEdge, stringr::str_c, collapse = ","))
+    })
+}
 
 findSampleTypeClassifier.tbl <- function(counts, meta, target, x_genes, y_genes, x_group, y_group,
                                      varInt="group", x_filter="xy", y_filter="xy", sample_summary_f=max, classifier=median, norm=computeFPKM) {
