@@ -21,7 +21,7 @@ prep_DESeq2 <- function(se, varInt = "Type", batch = NULL, verbose = F, locfunc 
   SummarizedExperiment::colData(se)[,varInt] <- factor(SummarizedExperiment::colData(se)[,varInt])
 
   # costruct a formula
-  design_formula <- stringr::str_c("~ ", stringr::str_c(batch, varInt, sep = " + "))
+  design_formula <- stringr::str_c("~ ", stringr::str_c(c(batch, varInt), collapse = " + "))
   dds <- DESeq2::DESeqDataSet(se, design = formula(design_formula))
   if(verbose)  {
     cat("Design of the statistical model:\n")
@@ -31,17 +31,19 @@ prep_DESeq2 <- function(se, varInt = "Type", batch = NULL, verbose = F, locfunc 
 
   if(verbose) {
     cat("\nNormalization factors:\n")
-    print(sizeFactors(dds))
+    print(DESeq2::sizeFactors(dds))
   }
 
   dds <- DESeq2::estimateDispersions(dds, fitType = fitType)
 }
 
+# TODO: batch shold be other variables and not "batch", and also allow for a vector
 run_DESeq2 <- function (se, varInt = "Type", batch = NULL, locfunc = "median",
           fitType = "parametric", pAdjustMethod = "BH", cooksCutoff = TRUE,
           lfcShrinkMethod = "apeglm",  independentFiltering = TRUE, lrt=F,
           alpha = 0.05, verbose=F, ...)
 {
+  batch <- stringr::str_c(batch, collapse = " + ")
   dds <- prep_DESeq2(se, varInt = varInt, batch = batch, locfunc = locfunc,
                      fitType = fitType, verbose = verbose)
 
@@ -57,11 +59,15 @@ run_DESeq2 <- function (se, varInt = "Type", batch = NULL, locfunc = "median",
     SummarizedExperiment::colData(dds)[[varInt]] <-
       stats::relevel(SummarizedExperiment::colData(dds)[[varInt]], ref=refCond)
 
+    # TODO: this does not need to be re-run for each comparison. We can do this
+    # by calling results and changing the contrasts. A temporary solution to
+    # complete the returned dds object here is to use the "superassignment" <<-
+    # operator. This, too is unnecessary
     if(lrt) {
       reduced_formula <- stringr::str_c("~ ", ifelse(is.null(batch), 1, batch))
-      dds <- DESeq2::nbinomLRT(dds, reduced = formula(reduced_formula), ...)
+      dds <- dds <<- DESeq2::nbinomLRT(dds, reduced = formula(reduced_formula), ...)
     } else {
-      dds <- DESeq2::nbinomWaldTest(dds, ...)
+      dds <- dds <<- DESeq2::nbinomWaldTest(dds, ...)
     }
 
     # compare to all the conditions after it in the conditions
