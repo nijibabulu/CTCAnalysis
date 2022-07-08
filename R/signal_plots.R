@@ -14,39 +14,42 @@ lm_eqn <- function(df){
 
 
 plot_roc <- function(data, signal, classification,  response, color, title=signal, response_name=response,
-                     regression = F, dot_panel = F, plot_optimal=F,
-                     color_cutoffs=F, show_grid=F, fill_curve=F) {
+         regression = F, dot_panel = F, plot_optimal=F,
+         color_cutoffs=F, show_grid=F, fill_curve=F) {
   if(regression && !dot_panel) {
     stop("Regression is not possible without the dot panel display")
   }
-  pred <- ROCR::prediction(dplyr::pull(data, signal), dplyr::pull(data,classification))
-  perf <- ROCR::performance(pred, "tpr", "fpr")
-  auc <- ROCR::performance(pred, "auc")@y.values[[1]]
 
-  df <- tibble::tibble(`False Positive Rate`=perf@x.values[[1]],
-                       `True Positive Rate`=perf@y.values[[1]],
-                       Cutoff=perf@alpha.values[[1]])
+  roc <- pROC::roc(dplyr::pull(data,classification), dplyr::pull(data, signal))
+  ci <- pROC::ci(roc)
+
+  df <- tibble::tibble(`False Positive Rate`=sort(1-roc$specificities),
+                       `True Positive Rate`=sort(roc$sensitivities),
+                       Cutoff=roc$thresholds)
 
   youden <- df[which.max(df$`True Positive Rate`-df$`False Positive Rate`),]
+
+  ci_text <- stringr::str_c(prettyNum(ci[c(1,3)], digits = 2), collapse = "-")
+  ann_text <- stringr::str_glue("AUC = {prettyNum(ci[2], digits=2)} ({ci_text})")
 
   line_aes <- if(color_cutoffs) ggplot2::aes(color=Cutoff) else ggplot2::aes()
 
   p <- ggplot2::ggplot(df , ggplot2::aes(x=`False Positive Rate`, ymin=0, ymax=`True Positive Rate`, y=`True Positive Rate`)) +
     ggplot2::geom_line(line_aes) +
     ggplot2::geom_abline(intercept = 0, slope = 1, lty=20) +
-    ggplot2::annotate("text", x = .75, y=0.25, label=stringr::str_glue("AUC = {prettyNum(auc, digits=2)}")) +
+    ggplot2::annotate("text", x = 0.4, y=0.25, label=ann_text, hjust = 0) +
     ggplot2::scale_color_distiller(palette = "Reds") +
     ggplot2::theme_bw() +
     ggplot2::coord_equal() +
     ggplot2::labs(title = title)
-    ggplot2::theme()
+  ggplot2::theme()
 
   if(fill_curve)
     p <- p + ggplot2::geom_ribbon(fill="lightgrey")
 
   if(plot_optimal)
     p <- p + ggplot2::geom_point(data= youden) +
-      ggrepel::geom_text_repel(data= youden, ggplot2::aes(label=stringr::str_glue("Optimal cutoff = {prettyNum(Cutoff, digits = 2)}")))
+    ggrepel::geom_text_repel(data= youden, ggplot2::aes(label=stringr::str_glue("Optimal cutoff = {prettyNum(Cutoff, digits = 2)}")))
 
   responsemax <- max(dplyr::pull(data, response))
   eq <- lm_eqn(data %>% dplyr::select(y=signal, x=response))
