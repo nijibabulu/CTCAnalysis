@@ -41,11 +41,11 @@ boxplotGeneCounts <- function(counts, meta, geom=ggplot2::geom_boxplot(), ...) {
 }
 
 
-plot_summary_stats.tbl <- function(tbl, x="Type", facet="Stage~Patient",
-                               levels=c("Unmapped", "NoFeatures", "Ambiguity", "Multimapping", "Assigned"),
+plot_summary_stats.tbl_df <- function(tbl, x="Type", facet="Stage~Patient",
+                               levels=c("Unmapped", "NoFeatures", "Ambiguity", "Multimapped", "Assigned"),
                                colors=ggthemes::ptol_pal()(length(levels)),
                                facet_scales = "fixed", facet_space = "fixed") {
-  p <- ggplot2::ggplot(tbl, ggplot2::aes(x=x, y = value, fill=factor(name, levels=levels))) +
+  p <- ggplot2::ggplot(tbl, ggplot2::aes(x=.data[[x]], y = value, fill=factor(name, levels=levels))) +
     ggplot2::geom_col() +
     ggplot2::scale_fill_manual(values=colors) +
     ggplot2::theme_bw() +
@@ -217,6 +217,8 @@ gseaDotPlot <- function(gsea_results, threshold=0.2, ethresh=1, limits = NULL) {
     dplyr::filter(sig == "s") %>%
     dplyr::mutate(gseaResultRank = sign(NES)*-1*log10(padj)) %>%
     dplyr::mutate(pathway = forcats::fct_reorder(.$pathway, .$gseaResultRank))
+  if(nrow(ranked_results) < 1)
+    rlang::abort("No significant results.")
   if(is.null(limits))
     limits <- range(ranked_results$NES)
 
