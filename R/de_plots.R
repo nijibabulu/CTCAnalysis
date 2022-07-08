@@ -41,7 +41,7 @@ enhanceDESeq2CombinedTbl <- function(tbl, topn=20, fc=2, alpha=0.05, labels=NULL
 }
 
 
-DESeq2VolcanoPlot <- function(tbl, samples, name="Volcano Plot", alpha=0.05, fc=2, labels=NULL, topn=20, show_filtered = FALSE, rank=NULL, max.overlaps=100, text_size = 4, repel_pull = .1, repel_push = 10, segment_size = .5) {
+DESeq2VolcanoPlot <- function(tbl, samples, name="Volcano Plot", alpha=0.05, fc=2, labels=NULL, topn=20, show_filtered = FALSE, rank=NULL, max.overlaps=100, text_size = 4, repel_pull = .1, repel_push = 10, segment_size = .5, title_glue = "{samples[1]} versus {samples[2]} Volcano Plot") {
   data <- enhanceDESeq2ResultTbl(tbl, topn = topn, labels = labels, filter_na = !show_filtered, rank=rank, fc = fc, alpha = alpha)
 
   aesthetic <- ggplot2::aes(x=log2FoldChange, y=-log10(padj), color=Status, label=label)
@@ -57,7 +57,7 @@ DESeq2VolcanoPlot <- function(tbl, samples, name="Volcano Plot", alpha=0.05, fc=
     ggplot2::geom_point(size = 0.5) +
     ggplot2::scale_color_manual(values=purrr::set_names(c("red", "goldenrod", "grey"), levels(data$Status))) +
     ggrepel::geom_text_repel(show.legend = F, color = "black", max.overlaps = max.overlaps, size = text_size, force = repel_push, force_pull = repel_pull, segment.size = segment_size) +
-    ggplot2::labs(title = stringr::str_glue("{samples[1]} versus {samples[2]} Volcano Plot"),
+    ggplot2::labs(title = stringr::str_glue(title_glue),
                   legend = "") +
     ggplot2::annotate("text", x = 1, y = Inf, vjust = "inward", hjust = 0, label = samples[2], size = text_size) +
     ggplot2::annotate("text", x = -1, y = Inf, vjust = "inward", hjust = 1, label = samples[1], size = text_size) +
@@ -72,8 +72,8 @@ DESeq2VolcanoPlot <- function(tbl, samples, name="Volcano Plot", alpha=0.05, fc=
   p
 }
 
-DESeq2VolcanoPlots <- function(deres, alpha=0.05, fc=2, labels=NULL, topn=20, show_filtered = FALSE, rank = NULL, text_size = 4, repel_pull = .1, repel_push = 10, segment_size=.5) {
-  purrr::map2(deres$tbl_results, stringr::str_split(names(deres$tbl_results), "_vs_"), DESeq2VolcanoPlot, topn=topn, alpha=alpha, fc=fc, labels=labels, text_size = text_size, segment_size = segment_size)
+DESeq2VolcanoPlots <- function(deres, alpha=0.05, fc=2, labels=NULL, topn=20, show_filtered = FALSE, rank = NULL, text_size = 4, repel_pull = .1, repel_push = 10, segment_size=.5, ...) {
+  purrr::map2(deres$tbl_results, stringr::str_split(names(deres$tbl_results), "_vs_"), DESeq2VolcanoPlot, topn=topn, alpha=alpha, fc=fc, labels=labels, text_size = text_size, segment_size = segment_size, ...)
 }
 
 DESeq2MAPlot <- function(tbl, samples, alpha=0.05, fc=2, labels=NULL, topn=20, show_filtered = FALSE, rank = NULL) {
@@ -143,7 +143,7 @@ exprHeatmap <- function(se, genes = NULL, palette = ggthemes::stata_pal(), varIn
   else if(unplottable_action == "zero") { counts[bad_rows, ]  <- 0 }
 
   ann_data <- colTbl(se) %>% dplyr::select(dplyr::all_of(varInt))
-  values <- purrr::map(ann_data, purrr::compose(unique, as.character)) %>% purrr::flatten_chr()
+  values <- purrr::map(ann_data, purrr::compose(unique, as.character)) %>% purrr::flatten_chr() %>% na.omit()
   colors <- palette(length(values))
   col_map <- list(purrr::set_names(colors, values))
   col_ann <- ComplexHeatmap::HeatmapAnnotation(df = ann_data %>% dplyr::mutate_if(is.factor, as.character) %>% as.data.frame(),
