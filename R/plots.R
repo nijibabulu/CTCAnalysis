@@ -1,3 +1,4 @@
+#' @export
 summaryPlot <- function(se, x, y, geom=ggplot2::geom_col(),
                         group="Type", facet=NULL,
                         facet_scales = "fixed", facet_space = "fixed",
@@ -41,6 +42,8 @@ boxplotGeneCounts <- function(counts, meta, geom=ggplot2::geom_boxplot(), ...) {
 }
 
 
+
+
 plot_summary_stats.tbl_df <- function(tbl, x="Type", facet="Stage~Patient",
                                levels=c("Unmapped", "NoFeatures", "Ambiguity", "Multimapped", "Assigned"),
                                colors=ggthemes::ptol_pal()(length(levels)),
@@ -61,6 +64,7 @@ plot_summary_stats.tbl_df <- function(tbl, x="Type", facet="Stage~Patient",
   p
 }
 
+#' @export
 plot_summary_stats <- function(se, x="Type", facet="Stage~Patient",
                                levels=c("Unmapped", "NoFeatures", "Ambiguity", "MultiMapping", "Assigned"),
                                colors=ggthemes::ptol_pal()(length(levels)),
@@ -86,6 +90,7 @@ plot_summary_stats <- function(se, x="Type", facet="Stage~Patient",
   p
 }
 
+#' @export
 gseaPathwayPlot <- function(pathway_name, gsea_results, pathways, stats, gseaParam = 1, ticksSize = 0.2, linecolor="red",
                             label_stats=c("NES", `p-value`="pval", `q-value`="padj"), label_digits = 2,
                             title=pathway_name, titleSize=NULL, titleHjust=0.5) {
@@ -187,6 +192,7 @@ gseaPathwayPlot <- function(pathway_name, gsea_results, pathways, stats, gseaPar
   patchwork::wrap_plots(g,e,ncol=1)
 }
 
+#' @export
 enhancedGseaResultsTbl <- function(gsea_results, threshold, ethresh) {
   gsea_results %>%
     tibble::as_tibble() %>%
@@ -197,6 +203,7 @@ enhancedGseaResultsTbl <- function(gsea_results, threshold, ethresh) {
                   ))
 }
 
+#' @export
 gseaVolcanoPlot <- function(gsea_results, threshold=0.2, ethresh=1, bell=F) {
   enhanced_results <- eenhancedGseaResultsTbl(gsea_results, threshold, ethresh) %>%
     dplyr::mutate(padj=dplyr::case_when(bell ~ padj, TRUE ~ -log10(padj)))
@@ -210,6 +217,7 @@ gseaVolcanoPlot <- function(gsea_results, threshold=0.2, ethresh=1, bell=F) {
     theme(legend.position="none")
 }
 
+#' @export
 gseaDotPlot <- function(gsea_results, threshold=0.2, ethresh=1, limits = NULL) {
   enhanced_results <- enhancedGseaResultsTbl(gsea_results, threshold, ethresh)
   ranked_results <-
@@ -237,6 +245,7 @@ gseaDotPlot <- function(gsea_results, threshold=0.2, ethresh=1, limits = NULL) {
 
 
 
+#' @export
 maxGenePlot <- function(se, meta=NULL, norm=NULL, group="Type",
                         facet=NULL, facet_scales="fixed", facet_space="fixed",
                         palette=ggthemes::ptol_pal()) {
@@ -255,6 +264,7 @@ maxGenePlot <- function(se, meta=NULL, norm=NULL, group="Type",
   p
 }
 
+#' @export
 genePCAPlot <- function(se, norm=NULL, sample_column = "Sample", group="Type", palette=ggthemes::ptol_pal(),
                         pcs=2, nrow=1, n_genes = 500, label_points = T, fix_coords = T, label_col = "Patient", max.overlaps = 50,  ...) {
   pca <- genePCA(se, sample_column=sample_column,...)
@@ -293,6 +303,7 @@ genePCAPlot <- function(se, norm=NULL, sample_column = "Sample", group="Type", p
   }
 }
 
+#' @export
 sampleClustPlot <- function(counts, meta=NULL, title = "Cluster Dendrogram", method="ward.D",
                             vst = DESeq2::varianceStabilizingTransformation) {
   hc <- sampleHclust(counts, meta, vst = vst, clust_method = method)
